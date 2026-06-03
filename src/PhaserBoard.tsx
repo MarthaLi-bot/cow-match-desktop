@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { useEffect, useRef } from 'react';
 import { PastureScene } from './game/PastureScene';
 import type { LevelDef } from './game/levels';

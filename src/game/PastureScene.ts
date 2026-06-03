@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { iconUrls } from './iconUrls';
 import type { IconId, LevelDef, TileDef } from './levels';
 
@@ -33,6 +33,7 @@ export class PastureScene extends Phaser.Scene {
   private slotGraphics?: Phaser.GameObjects.Graphics;
   private locked = false;
   private ended = false;
+  private iconObjectUrls: string[] = [];
 
   constructor(level: LevelDef, onBack: () => void) {
     super(`pasture-level-${level.id}-${Date.now()}`);
@@ -42,11 +43,13 @@ export class PastureScene extends Phaser.Scene {
 
   preload() {
     Object.entries(iconUrls).forEach(([key, url]) => {
-      this.load.svg(`icon-${key}`, url, { width: 60, height: 60 });
+      this.queueIconTextureLoad(key as IconId, url);
     });
+    this.load.once('complete', () => this.revokeIconObjectUrls());
   }
 
   create() {
+    this.ensureIconFallbackTextures();
     this.createBackground();
     this.createHud();
     [...this.level.tiles]
@@ -79,6 +82,74 @@ export class PastureScene extends Phaser.Scene {
 
     this.makeButton(790, 42, '重新开始', () => this.scene.restart());
     this.makeButton(940, 42, '返回选关', () => this.onBack());
+  }
+
+  private queueIconTextureLoad(icon: IconId, source: string) {
+    const loadUrl = this.getLoadableSvgUrl(source);
+    if (!loadUrl) return;
+
+    this.load.svg(`icon-${icon}`, loadUrl, { width: 60, height: 60 });
+  }
+
+  private getLoadableSvgUrl(source: string) {
+    const trimmed = source.trim();
+
+    if (trimmed.startsWith('<svg') || trimmed.startsWith('<?xml')) {
+      return this.createSvgObjectUrl(trimmed);
+    }
+
+    if (!trimmed.startsWith('data:image/svg+xml')) {
+      return trimmed;
+    }
+
+    const commaIndex = trimmed.indexOf(',');
+    if (commaIndex === -1 || trimmed.slice(0, commaIndex).toLowerCase().includes(';base64')) {
+      return undefined;
+    }
+
+    try {
+      return this.createSvgObjectUrl(decodeURIComponent(trimmed.slice(commaIndex + 1)));
+    } catch {
+      return undefined;
+    }
+  }
+
+  private createSvgObjectUrl(svgText: string) {
+    const objectUrl = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' }));
+    this.iconObjectUrls.push(objectUrl);
+    return objectUrl;
+  }
+
+  private revokeIconObjectUrls() {
+    this.iconObjectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+    this.iconObjectUrls = [];
+  }
+
+  private ensureIconFallbackTextures() {
+    Object.keys(iconUrls).forEach((icon) => {
+      const textureKey = `icon-${icon}`;
+      if (!this.textures.exists(textureKey)) {
+        this.createFallbackIconTexture(textureKey, icon);
+      }
+    });
+  }
+
+  private createFallbackIconTexture(textureKey: string, label: string) {
+    const texture = this.textures.createCanvas(textureKey, 60, 60);
+    if (!texture) return;
+
+    const context = texture.getContext();
+    context.fillStyle = '#f0ffe7';
+    context.strokeStyle = '#8acb66';
+    context.lineWidth = 4;
+    context.fillRect(4, 4, 52, 52);
+    context.strokeRect(4, 4, 52, 52);
+    context.fillStyle = '#3f6d34';
+    context.font = 'bold 22px Arial, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(label.slice(0, 1).toUpperCase(), 30, 31);
+    texture.refresh();
   }
 
 
