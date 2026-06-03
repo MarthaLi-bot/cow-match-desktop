@@ -1,0 +1,23 @@
+{
+  "name": "cow-match-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "牛了个牛 - Windows desktop layered match-slot prototype",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "desktop": "npm run build && electron .",
+    "dev": "vite",
+    "build": "node scripts/build.cjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "phaser": "latest",
+    "electron": "latest"
+  },
+  "devDependencies": {}
+}
