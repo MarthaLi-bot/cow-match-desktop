@@ -23,22 +23,31 @@ const SLOT_SIZE = 86;
 const SLOT_GAP = 12;
 const SLOT_Y = 660;
 const SLOT_START_X = 260;
+const BOARD_DEPTH = 100;
+const SLOT_DEPTH = 5000;
+const MODAL_DEPTH = 9000;
 
 export class PastureScene extends Phaser.Scene {
   private readonly level: LevelDef;
   private readonly onBack: () => void;
+  private readonly onComplete: (level: LevelDef) => void;
+  private readonly onNextLevel?: () => void;
   private tiles = new Map<string, TileSprite>();
   private slotItems: SlotItem[] = [];
   private statusText?: Phaser.GameObjects.Text;
+  private remainingText?: Phaser.GameObjects.Text;
+  private slotCountText?: Phaser.GameObjects.Text;
   private slotGraphics?: Phaser.GameObjects.Graphics;
   private locked = false;
   private ended = false;
   private iconObjectUrls: string[] = [];
 
-  constructor(level: LevelDef, onBack: () => void) {
+  constructor(level: LevelDef, onBack: () => void, onComplete: (level: LevelDef) => void, onNextLevel?: () => void) {
     super(`pasture-level-${level.id}-${Date.now()}`);
     this.level = level;
     this.onBack = onBack;
+    this.onComplete = onComplete;
+    this.onNextLevel = onNextLevel;
   }
 
   preload() {
@@ -57,27 +66,42 @@ export class PastureScene extends Phaser.Scene {
       .forEach((tile) => this.createTile(tile));
     this.refreshBlockState();
     this.drawSlots();
+    this.updateHud();
   }
 
   private createBackground() {
     this.add.rectangle(540, 360, 1080, 720, 0xfff8e7);
-    this.add.rectangle(540, 420, 1040, 430, 0xdff6c4, 0.82).setStrokeStyle(4, 0xb8de85, 0.8);
-    this.add.ellipse(210, 120, 160, 70, 0xffffff, 0.65);
-    this.add.ellipse(890, 100, 190, 76, 0xffffff, 0.55);
-    this.add.circle(930, 95, 42, 0xffd76a, 0.85);
-    this.add.text(38, 24, `牛了个牛 · ${this.level.name}`, {
+    this.add.rectangle(540, 418, 1040, 432, 0xdff6c4, 1).setStrokeStyle(4, 0xb8de85, 1);
+    this.add.ellipse(210, 120, 160, 70, 0xffffff, 0.82);
+    this.add.ellipse(890, 100, 190, 76, 0xffffff, 0.78);
+    this.add.circle(930, 95, 42, 0xffd76a, 1);
+    this.add.text(38, 22, `牛了个牛 · 第 ${this.level.id} 关 · ${this.level.name}`, {
       fontFamily: 'Arial, Microsoft YaHei, sans-serif',
       fontSize: '30px',
-      color: '#3f5f36',
+      color: '#315e2b',
       fontStyle: 'bold',
     });
   }
 
   private createHud() {
-    this.statusText = this.add.text(40, 70, '清掉所有牧场图块。卡槽满 7 格且未消除会失败。', {
+    this.statusText = this.add.text(40, 68, '先点击没有被上层遮挡的图块，凑齐三枚相同图标即可消除。', {
       fontFamily: 'Arial, Microsoft YaHei, sans-serif',
       fontSize: '18px',
       color: '#557248',
+    });
+
+    this.remainingText = this.add.text(40, 98, '', {
+      fontFamily: 'Arial, Microsoft YaHei, sans-serif',
+      fontSize: '19px',
+      color: '#315e2b',
+      fontStyle: 'bold',
+    });
+
+    this.slotCountText = this.add.text(235, 98, '', {
+      fontFamily: 'Arial, Microsoft YaHei, sans-serif',
+      fontSize: '19px',
+      color: '#245d7e',
+      fontStyle: 'bold',
     });
 
     this.makeButton(790, 42, '重新开始', () => this.scene.restart());
@@ -152,7 +176,6 @@ export class PastureScene extends Phaser.Scene {
     texture.refresh();
   }
 
-
   private roundedPanel(x: number, y: number, width: number, height: number, radius: number, fill: number, alpha = 1, stroke?: number, lineWidth = 0) {
     const graphics = this.add.graphics();
     return this.paintRoundedPanel(graphics, x, y, width, height, radius, fill, alpha, stroke, lineWidth);
@@ -169,9 +192,9 @@ export class PastureScene extends Phaser.Scene {
     return graphics;
   }
 
-  private makeButton(x: number, y: number, label: string, action: () => void) {
-    const group = this.add.container(x, y);
-    const bg = this.roundedPanel(0, 0, 126, 44, 16, 0xffffff, 1, 0x8acb66, 3);
+  private makeButton(x: number, y: number, label: string, action: () => void, width = 126) {
+    const group = this.add.container(x, y).setDepth(MODAL_DEPTH + 1);
+    const bg = this.roundedPanel(0, 0, width, 44, 16, 0xffffff, 1, 0x8acb66, 3);
     const text = this.add.text(0, 0, label, {
       fontFamily: 'Arial, Microsoft YaHei, sans-serif',
       fontSize: '17px',
@@ -179,10 +202,11 @@ export class PastureScene extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5);
     group.add([bg, text]);
-    group.setSize(126, 44).setInteractive({ useHandCursor: true });
-    group.on('pointerover', () => this.paintRoundedPanel(bg, 0, 0, 126, 44, 16, 0xf0ffe7, 1, 0x8acb66, 3));
-    group.on('pointerout', () => this.paintRoundedPanel(bg, 0, 0, 126, 44, 16, 0xffffff, 1, 0x8acb66, 3));
+    group.setSize(width, 44).setInteractive({ useHandCursor: true });
+    group.on('pointerover', () => this.paintRoundedPanel(bg, 0, 0, width, 44, 16, 0xf0ffe7, 1, 0x8acb66, 3));
+    group.on('pointerout', () => this.paintRoundedPanel(bg, 0, 0, width, 44, 16, 0xffffff, 1, 0x8acb66, 3));
     group.on('pointerup', action);
+    return group;
   }
 
   private createTile(tile: TileDef) {
@@ -195,19 +219,21 @@ export class PastureScene extends Phaser.Scene {
     container.tileRect = new Phaser.Geom.Rectangle(tile.x - TILE_W / 2, tile.y - TILE_H / 2, TILE_W, TILE_H);
     container.blocked = false;
 
-    const shadow = this.roundedPanel(6, 8, TILE_W, TILE_H, 20, 0x6b7a55, 0.18);
-    const face = this.roundedPanel(0, 0, TILE_W, TILE_H, 20, 0xfffbef, 1, 0xffffff, 4);
+    const shadow = this.roundedPanel(5, 7, TILE_W - 4, TILE_H - 4, 18, 0x6b7a55, 0.22);
+    const opaqueBase = this.add.rectangle(0, 0, TILE_W, TILE_H, 0xfffbef, 1);
+    const face = this.roundedPanel(0, 0, TILE_W - 2, TILE_H - 2, 18, 0xfffbef, 1, 0x6fb15a, 2);
+    const inner = this.roundedPanel(0, 0, TILE_W - 14, TILE_H - 14, 15, 0xffffff, 1, 0xffe7a6, 2);
     const icon = this.add.image(0, -3, `icon-${tile.icon}`).setDisplaySize(62, 62);
     const badge = this.add.text(28, 31, `${tile.layer + 1}`, {
       fontFamily: 'Arial, sans-serif',
       fontSize: '13px',
-      color: '#6b8b4f',
+      color: '#315e2b',
       backgroundColor: '#efffdd',
       padding: { x: 6, y: 2 },
     }).setOrigin(0.5);
 
-    container.add([shadow, face, icon, badge]);
-    container.setDepth(tile.layer * 100 + tile.y);
+    container.add([shadow, opaqueBase, face, inner, icon, badge]);
+    container.setDepth(BOARD_DEPTH + tile.layer * 1000 + tile.y);
     container.setSize(TILE_W, TILE_H).setInteractive({ useHandCursor: true });
     container.on('pointerup', () => this.handleTileClick(container));
     this.tiles.set(tile.id, container);
@@ -218,9 +244,11 @@ export class PastureScene extends Phaser.Scene {
     this.locked = true;
     this.tiles.delete(tile.tileId);
     tile.disableInteractive();
+    tile.setDepth(SLOT_DEPTH + 20 + this.slotItems.length);
     this.slotItems.push({ sprite: tile, icon: tile.icon });
     const index = this.slotItems.length - 1;
     const targetX = SLOT_START_X + index * (SLOT_SIZE + SLOT_GAP);
+    this.updateHud();
 
     this.tweens.add({
       targets: tile,
@@ -236,6 +264,7 @@ export class PastureScene extends Phaser.Scene {
           this.refreshBlockState();
           this.checkEndState();
           this.locked = false;
+          this.updateHud();
         });
       },
     });
@@ -262,7 +291,11 @@ export class PastureScene extends Phaser.Scene {
         onComplete: () => item.sprite.destroy(),
       });
     });
-    this.time.delayedCall(300, () => this.compactSlots());
+    this.time.delayedCall(300, () => {
+      this.compactSlots();
+      this.updateHud();
+      this.checkEndState();
+    });
   }
 
   private compactSlots(done?: () => void) {
@@ -274,6 +307,7 @@ export class PastureScene extends Phaser.Scene {
 
     let remaining = this.slotItems.length;
     this.slotItems.forEach((item, index) => {
+      item.sprite.setDepth(SLOT_DEPTH + 20 + index);
       this.tweens.add({
         targets: item.sprite,
         x: SLOT_START_X + index * (SLOT_SIZE + SLOT_GAP),
@@ -292,9 +326,20 @@ export class PastureScene extends Phaser.Scene {
     const remaining = [...this.tiles.values()];
     remaining.forEach((tile) => {
       tile.blocked = remaining.some((other) => other.layer > tile.layer && Phaser.Geom.Intersects.RectangleToRectangle(tile.tileRect, other.tileRect));
-      tile.setAlpha(tile.blocked ? 0.58 : 1);
-      tile.setScale(tile.blocked ? 0.96 : 1);
+      tile.setAlpha(1);
+      tile.setScale(1);
+      if (tile.blocked) {
+        tile.disableInteractive();
+      } else {
+        tile.setInteractive({ useHandCursor: true });
+      }
+      tile.setDepth(BOARD_DEPTH + tile.layer * 1000 + tile.baseY);
     });
+  }
+
+  private updateHud() {
+    this.remainingText?.setText(`剩余图块：${this.tiles.size}`);
+    this.slotCountText?.setText(`卡槽：${this.slotItems.length}/7`);
   }
 
   private checkEndState() {
@@ -308,38 +353,57 @@ export class PastureScene extends Phaser.Scene {
   }
 
   private endGame(won: boolean) {
+    if (this.ended) return;
     this.ended = true;
-    const message = won ? '胜利！牧场图块全部收集完成。' : '失败！卡槽已满，先试试别的点击顺序。';
+    if (won) this.onComplete(this.level);
+
+    const hasNext = won && this.onNextLevel !== undefined;
+    const message = won
+      ? hasNext
+        ? '胜利！下一关已经解锁，继续沿牧场小路挑战吧。'
+        : '胜利！已完成全部关卡。'
+      : '失败！卡槽已满，先试试别的点击顺序。';
     this.statusText?.setText(message);
-    this.roundedPanel(540, 360, 560, 180, 26, 0xffffff, 0.9, won ? 0x8acb66 : 0xff9f6e, 5);
-    this.add.text(540, 340, won ? '牧场大成功' : '卡槽挤满啦', {
+
+    this.roundedPanel(540, 360, 620, hasNext ? 236 : 220, 28, 0xffffff, 1, won ? 0x8acb66 : 0xff9f6e, 5).setDepth(MODAL_DEPTH);
+    this.add.text(540, 316, won ? '牧场大成功' : '卡槽挤满啦', {
       fontFamily: 'Arial, Microsoft YaHei, sans-serif',
       fontSize: '36px',
       color: won ? '#3f7d35' : '#b55b31',
       fontStyle: 'bold',
-    }).setOrigin(0.5);
-    this.add.text(540, 392, message, {
+    }).setOrigin(0.5).setDepth(MODAL_DEPTH + 1);
+    this.add.text(540, 366, message, {
       fontFamily: 'Arial, Microsoft YaHei, sans-serif',
       fontSize: '20px',
       color: '#557248',
-    }).setOrigin(0.5);
+      align: 'center',
+      wordWrap: { width: 520 },
+    }).setOrigin(0.5).setDepth(MODAL_DEPTH + 1);
+
+    if (hasNext) {
+      this.makeButton(420, 430, '继续下一关', () => this.onNextLevel?.(), 150);
+      this.makeButton(565, 430, '重新开始', () => this.scene.restart(), 126);
+      this.makeButton(710, 430, '返回选关', () => this.onBack(), 126);
+    } else {
+      this.makeButton(465, 426, '重新开始', () => this.scene.restart(), 126);
+      this.makeButton(615, 426, '返回选关', () => this.onBack(), 126);
+    }
   }
 
   private drawSlots() {
     this.slotGraphics?.destroy();
-    this.slotGraphics = this.add.graphics().setDepth(5000);
-    this.slotGraphics.fillStyle(0xffffff, 0.7);
+    this.slotGraphics = this.add.graphics().setDepth(SLOT_DEPTH);
+    this.slotGraphics.fillStyle(0xffffff, 1);
     this.slotGraphics.fillRoundedRect(215, 603, 710, 120, 24);
     this.slotGraphics.lineStyle(4, 0x9cd47b, 1);
     this.slotGraphics.strokeRoundedRect(215, 603, 710, 120, 24);
     for (let i = 0; i < 7; i += 1) {
       const x = SLOT_START_X + i * (SLOT_SIZE + SLOT_GAP);
-      this.slotGraphics.fillStyle(0xeaf8ff, 0.9);
+      this.slotGraphics.fillStyle(0xeaf8ff, 1);
       this.slotGraphics.fillRoundedRect(x - SLOT_SIZE / 2, SLOT_Y - SLOT_SIZE / 2, SLOT_SIZE, SLOT_SIZE, 18);
       this.slotGraphics.lineStyle(2, 0xb7dff3, 1);
       this.slotGraphics.strokeRoundedRect(x - SLOT_SIZE / 2, SLOT_Y - SLOT_SIZE / 2, SLOT_SIZE, SLOT_SIZE, 18);
     }
-    this.slotGraphics.setDepth(10);
-    this.slotItems.forEach((item) => item.sprite.setDepth(20));
+    this.slotItems.forEach((item, index) => item.sprite.setDepth(SLOT_DEPTH + 20 + index));
   }
 }
